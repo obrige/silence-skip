@@ -31,7 +31,7 @@ jobs:
             short_sha=$(echo "${{ github.sha }}" | cut -c1-7)
             echo "tag=dev-${short_sha}" >> $GITHUB_OUTPUT
           fi
-      - run: npm ci
+      - run: npm install
       - run: npx web-ext lint --source-dir=src
       - run: npm run build:${{ matrix.target }}
       - name: Package archive

@@ -40,7 +40,10 @@ jobs:
             cp src/manifest.json src/manifest.json.bak
             sed -i 's/"service_worker": *"background.js",/"scripts": ["background.js"]/' src/manifest.json
             sed -i '/"type": *"module"/d' src/manifest.json
-            echo "Adapting manifest.json for Firefox (service_worker -> scripts)"
+            # tabCapture is a Chrome-only permission. Firefox already covers the
+            # same capability via the "tabs" permission below.
+            sed -i '/"tabCapture"/d' src/manifest.json
+            echo "Adapting manifest.json for Firefox (service_worker -> scripts, drop tabCapture)"
           fi
           npm run build:${{ matrix.target }}
           if [[ "${{ matrix.target }}" == "firefox" ]]; then

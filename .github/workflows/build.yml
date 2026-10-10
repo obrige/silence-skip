@@ -31,10 +31,22 @@ jobs:
             short_sha=$(echo "${{ github.sha }}" | cut -c1-7)
             echo "tag=dev-${short_sha}" >> $GITHUB_OUTPUT
           fi
-# Build and package the extension for the active target
       - run: npm install
+# Build and package the extension for the active target (manifest adapts to Firefox)
       - run: mkdir -p dist
-      - run: npm run build:${{ matrix.target }}
+      - name: Build for ${{ matrix.target }}
+        run: |
+          if [[ "${{ matrix.target }}" == "firefox" ]]; then
+            cp src/manifest.json src/manifest.json.bak
+            sed -i 's/"service_worker": *"background.js",/"scripts": ["background.js"],/' src/manifest.json
+            sed -i '/"type": *"module"/d' src/manifest.json
+            echo "Adapting manifest.json for Firefox (service_worker -> scripts)"
+          fi
+          npm run build:${{ matrix.target }}
+          if [[ "${{ matrix.target }}" == "firefox" ]]; then
+            mv src/manifest.json.bak src/manifest.json
+            echo "Restored original manifest.json"
+          fi
       - name: Package archive
         run: |
           mkdir -p artifacts

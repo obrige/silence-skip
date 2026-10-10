@@ -43,8 +43,6 @@ jobs:
             echo "Adapting manifest.json for Firefox (service_worker -> scripts)"
           fi
           npm run build:${{ matrix.target }}
-          echo "--- dist contents ---"
-          ls -la dist/
           if [[ "${{ matrix.target }}" == "firefox" ]]; then
             mv src/manifest.json.bak src/manifest.json
             echo "Restored original manifest.json"
@@ -53,16 +51,10 @@ jobs:
         run: |
           mkdir -p artifacts
           if [[ "${{ matrix.target }}" == "firefox" ]]; then
-            # web-ext build wraps files in a subdirectory. Flatten it so manifest.json
-            # (and all source files) sit at the zip root, which is what Firefox requires.
-            WEB_EXT_ZIP=$(find dist -maxdepth 1 -name '*.zip' -o -name '*.xpi' | head -1)
-            echo "Using web-ext built file: $WEB_EXT_ZIP"
-            EXTRACT_DIR=$(mktemp -d)
-            unzip -q "$WEB_EXT_ZIP" -d "$EXTRACT_DIR"
-            INNER_DIR=$(ls "$EXTRACT_DIR")
-            echo "Inner dir: $INNER_DIR"
-            cd "$EXTRACT_DIR/$INNER_DIR"
-            zip -r "$OLDPWD/artifacts/silence-skip-${{ steps.ver.outputs.tag }}-firefox.xpi" .
+            # web-ext build produces a zip with manifest.json already at the root
+            # (filename is "{name}_{version}.zip", see https://github.com/mozilla/web-ext).
+            # Just copy it under our canonical release name.
+            find dist -maxdepth 1 \( -name '*.zip' -o -name '*.xpi' \) -exec cp {} "artifacts/silence-skip-${{ steps.ver.outputs.tag }}-firefox.xpi" \;
           else
             # chrome build script (cd src && zip -r ../dist/chrome.zip .) already
             # produces a zip with manifest.json at the root, so we just copy it.

@@ -5,7 +5,6 @@
   "description": "Smart silence detection and skipping for video/audio. Non-speedup acceleration.",
   "author": "GH_USERNAME",
   "permissions": [
-    "tabCapture",
     "activeTab",
     "scripting",
     "tabs",
@@ -14,10 +13,6 @@
   "host_permissions": [
     "<all_urls>"
   ],
-  "background": {
-    "service_worker": "background.js",
-    "type": "module"
-  },
   "content_scripts": [
     {
       "matches": [

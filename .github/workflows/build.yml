@@ -35,6 +35,7 @@ jobs:
       - name: Lint (Firefox only)
         if: matrix.target == 'firefox'
         run: npx web-ext lint --source-dir=src
+      - run: mkdir -p dist
       - run: npm run build:${{ matrix.target }}
       - name: Package archive
         run: |

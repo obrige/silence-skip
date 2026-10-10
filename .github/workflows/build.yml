@@ -31,10 +31,10 @@ jobs:
             short_sha=$(echo "${{ github.sha }}" | cut -c1-7)
             echo "tag=dev-${short_sha}" >> $GITHUB_OUTPUT
           fi
-      - run: npm install
+- run: npm install
       - run: mkdir -p dist
       - run: npm run build:${{ matrix.target }}
-- name: Package archive
+      - name: Package archive
         run: |
           mkdir -p artifacts
           ext="zip"

@@ -1,0 +1,74 @@
+name: build
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [chrome, firefox]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Inject GitHub username into manifest
+        run: sed -i "s/GH_USERNAME/${{ github.repository_owner }}/g" src/manifest.json
+      - name: Resolve version tag
+        id: ver
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            short_sha=$(echo "${{ github.sha }}" | cut -c1-7)
+            echo "tag=dev-${short_sha}" >> $GITHUB_OUTPUT
+          fi
+      - run: npm ci
+      - run: npx web-ext lint --source-dir=src
+      - run: npm run build:${{ matrix.target }}
+      - name: Package archive
+        run: |
+          mkdir -p artifacts
+          ext="zip"
+          if [[ "${{ matrix.target }}" == "firefox" ]]; then ext="xpi"; fi
+          cd dist
+          zip -r "../artifacts/silence-skip-${{ steps.ver.outputs.tag }}-${{ matrix.target }}.${ext}" .
+      - name: Sign Firefox via AMO unlisted (if secrets configured)
+        if: matrix.target == 'firefox' && startsWith(github.ref, 'refs/tags/v') && env.AMO_JWT_ISSUER != ''
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          npx web-ext sign --source-dir=src --artifacts-dir=signed \
+            --api-key="$AMO_JWT_ISSUER" --api-secret="$AMO_JWT_SECRET" --channel=unlisted
+          cp signed/*.xpi "artifacts/silence-skip-${{ steps.ver.outputs.tag }}-firefox.xpi"
+          echo "Signed Firefox build created"
+        continue-on-error: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: artifacts/
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

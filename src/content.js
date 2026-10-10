@@ -17,6 +17,11 @@ if (window.__silenceSkipInjected) { } else {
       const target = Math.min(from + (msg.jumpMs / 1000), v.duration - 0.05);
       v.currentTime = target; state.skipped++; state.savedSec += (target - from); updateStats();
     }
+    else if (msg.type === 'check-init') {
+      // Sent by the background script when this tab becomes active (Firefox can
+      // only capture the active tab, so we re-init on tab switch).
+      if (state.video) { api.runtime.sendMessage({ type: 'init' }).catch(() => {}); }
+    }
   });
   injectUI();
   function injectUI() {

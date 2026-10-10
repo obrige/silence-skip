@@ -38,7 +38,7 @@ jobs:
         run: |
           if [[ "${{ matrix.target }}" == "firefox" ]]; then
             cp src/manifest.json src/manifest.json.bak
-            sed -i 's/"service_worker": *"background.js",/"scripts": ["background.js"],/' src/manifest.json
+            sed -i 's/"service_worker": *"background.js",/"scripts": ["background.js"]/' src/manifest.json
             sed -i '/"type": *"module"/d' src/manifest.json
             echo "Adapting manifest.json for Firefox (service_worker -> scripts)"
           fi

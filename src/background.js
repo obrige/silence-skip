@@ -1,7 +1,13 @@
 const api = typeof browser !== 'undefined' ? browser : chrome;
+const isFirefox = typeof browser !== 'undefined';
 const tabs = new Map();
 async function getMedia(tabId) {
-  if (api.tabCapture.getMediaStreamId) {
+  if (isFirefox) {
+    // Firefox: tabCapture.capture() returns a MediaStream of the active tab directly.
+    // Note: Firefox captures the currently active tab, not a specified tabId.
+    return api.tabCapture.capture({ audio: true, video: false });
+  }
+  if (api.tabCapture && api.tabCapture.getMediaStreamId) {
     const streamId = await api.tabCapture.getMediaStreamId({ tabId });
     return navigator.mediaDevices.getUserMedia({ audio: { mandatory: { chromeMediaSourceId: streamId, chromeMediaSource: 'tab' } } });
   }
@@ -17,7 +23,17 @@ function setupAnalyser(stream) {
   return { ctx, analyser, data: new Float32Array(analyser.fftSize), stream, enabled: true, silenceStartT: null, lastSkipAt: 0, thresholdDB: -45, minSilenceMs: 300, jumpMs: 1000, skipped: 0 };
 }
 async function startCapture(tabId) {
-  try { const stream = await getMedia(tabId); const state = setupAnalyser(stream); tabs.set(tabId, state); tick(tabId); return state; } catch (e) { return null; }
+  try {
+    if (!api.tabCapture) { console.error('[silence-skip] tabCapture API not available'); return null; }
+    const stream = await getMedia(tabId);
+    const state = setupAnalyser(stream);
+    tabs.set(tabId, state);
+    tick(tabId);
+    return state;
+  } catch (e) {
+    console.error('[silence-skip] capture failed:', e);
+    return null;
+  }
 }
 function tick(tabId) {
   const s = tabs.get(tabId);
@@ -43,7 +59,7 @@ function tick(tabId) {
   setTimeout(() => tick(tabId), 60);
 }
 api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  const tabId = sender.tab?.id;
+  const tabId = sender.tab ? sender.tab.id : undefined;
   if (!tabId) return;
   if (msg.type === 'init') {
     if (!tabs.has(tabId)) startCapture(tabId).then(s => sendResponse({ ok: !!s }));
@@ -57,5 +73,5 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 api.tabs.onRemoved.addListener((tabId) => {
   const s = tabs.get(tabId);
-  if (s) { s.stream?.getTracks().forEach(t => t.stop()); s.ctx?.close(); tabs.delete(tabId); }
+  if (s) { s.stream ? s.stream.getTracks().forEach(t => t.stop()) : null; s.ctx ? s.ctx.close() : null; tabs.delete(tabId); }
 });

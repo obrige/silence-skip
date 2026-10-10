@@ -50,10 +50,21 @@ jobs:
       - name: Package archive
         run: |
           mkdir -p artifacts
-          ext="zip"
-          if [[ "${{ matrix.target }}" == "firefox" ]]; then ext="xpi"; fi
-          cd dist
-          zip -r "../artifacts/silence-skip-${{ steps.ver.outputs.tag }}-${{ matrix.target }}.${ext}" .
+          if [[ "${{ matrix.target }}" == "firefox" ]]; then
+            # web-ext build wraps files in a `silence-skip-X.Y.Z/` subdirectory.
+            # Flatten it so manifest.json (and all source files) sit at the zip root,
+            # which is what Firefox requires for addon installation.
+            WEB_EXT_ZIP=$(ls dist/silence-skip-*.zip | head -1)
+            EXTRACT_DIR=$(mktemp -d)
+            unzip -q "$WEB_EXT_ZIP" -d "$EXTRACT_DIR"
+            INNER_DIR=$(ls "$EXTRACT_DIR")
+            cd "$EXTRACT_DIR/$INNER_DIR"
+            zip -r "$OLDPWD/artifacts/silence-skip-${{ steps.ver.outputs.tag }}-firefox.xpi" .
+          else
+            # chrome build script (cd src && zip -r ../dist/chrome.zip .) already
+            # produces a zip with manifest.json at the root, so we just copy it.
+            cp dist/chrome.zip "artifacts/silence-skip-${{ steps.ver.outputs.tag }}-chrome.zip"
+          fi
       - name: Sign Firefox via AMO unlisted (if secrets configured)
         if: matrix.target == 'firefox' && startsWith(github.ref, 'refs/tags/v') && env.AMO_JWT_ISSUER != ''
         env:

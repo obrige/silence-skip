@@ -1,6 +1,25 @@
 const api = typeof browser !== 'undefined' ? browser : chrome;
 const isFirefox = typeof browser !== 'undefined';
 const tabs = new Map();
+
+async function isActiveTab(tabId) {
+  try {
+    const tab = await api.tabs.get(tabId);
+    return !!(tab && tab.active);
+  } catch (e) {
+    return false;
+  }
+}
+
+function stopCapture(tabId) {
+  const s = tabs.get(tabId);
+  if (!s) return;
+  s.enabled = false;
+  if (s.stream) s.stream.getTracks().forEach(t => t.stop());
+  if (s.ctx) s.ctx.close();
+  tabs.delete(tabId);
+}
+
 async function getMedia(tabId) {
   if (isFirefox) {
     // Firefox: tabCapture.capture() returns a MediaStream of the active tab directly.
@@ -13,6 +32,7 @@ async function getMedia(tabId) {
   }
   return api.tabCapture.capture(tabId, { audio: true, video: false });
 }
+
 function setupAnalyser(stream) {
   const ctx = new AudioContext();
   const src = ctx.createMediaStreamSource(stream);
@@ -22,6 +42,7 @@ function setupAnalyser(stream) {
   src.connect(analyser);
   return { ctx, analyser, data: new Float32Array(analyser.fftSize), stream, enabled: true, silenceStartT: null, lastSkipAt: 0, thresholdDB: -45, minSilenceMs: 300, jumpMs: 1000, skipped: 0 };
 }
+
 async function startCapture(tabId) {
   try {
     if (!api.tabCapture) { console.error('[silence-skip] tabCapture API not available'); return null; }
@@ -35,6 +56,7 @@ async function startCapture(tabId) {
     return null;
   }
 }
+
 function tick(tabId) {
   const s = tabs.get(tabId);
   if (!s || !s.enabled) return;
@@ -58,10 +80,23 @@ function tick(tabId) {
   }
   setTimeout(() => tick(tabId), 60);
 }
+
 api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab ? sender.tab.id : undefined;
   if (!tabId) return;
   if (msg.type === 'init') {
+    if (isFirefox) {
+      // Firefox can only capture the active tab, so verify before starting.
+      isActiveTab(tabId).then(active => {
+        if (!active) {
+          sendResponse({ ok: false, reason: 'not-active-tab' });
+          return;
+        }
+        if (!tabs.has(tabId)) startCapture(tabId).then(s => sendResponse({ ok: !!s }));
+        else sendResponse({ ok: true });
+      });
+      return true;
+    }
     if (!tabs.has(tabId)) startCapture(tabId).then(s => sendResponse({ ok: !!s }));
     else sendResponse({ ok: true });
     return true;
@@ -71,7 +106,18 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'set-minsilence') { const s = tabs.get(tabId); if (s) s.minSilenceMs = msg.value; }
   if (msg.type === 'set-jump') { const s = tabs.get(tabId); if (s) s.jumpMs = msg.value; }
 });
+
+if (isFirefox) {
+  // Firefox: only the active tab can be captured. On tab switch, stop the old
+  // capture and ask the newly active tab to re-init if it has a video.
+  api.tabs.onActivated.addListener((activeInfo) => {
+    for (const tabId of Array.from(tabs.keys())) {
+      if (tabId !== activeInfo.tabId) stopCapture(tabId);
+    }
+    api.tabs.sendMessage(activeInfo.tabId, { type: 'check-init' }).catch(() => {});
+  });
+}
+
 api.tabs.onRemoved.addListener((tabId) => {
-  const s = tabs.get(tabId);
-  if (s) { s.stream ? s.stream.getTracks().forEach(t => t.stop()) : null; s.ctx ? s.ctx.close() : null; tabs.delete(tabId); }
+  stopCapture(tabId);
 });

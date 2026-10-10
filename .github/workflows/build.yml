@@ -32,7 +32,9 @@ jobs:
             echo "tag=dev-${short_sha}" >> $GITHUB_OUTPUT
           fi
       - run: npm install
-      - run: npx web-ext lint --source-dir=src
+      - name: Lint (Firefox only)
+        if: matrix.target == 'firefox'
+        run: npx web-ext lint --source-dir=src
       - run: npm run build:${{ matrix.target }}
       - name: Package archive
         run: |

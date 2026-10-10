@@ -43,6 +43,8 @@ jobs:
             echo "Adapting manifest.json for Firefox (service_worker -> scripts)"
           fi
           npm run build:${{ matrix.target }}
+          echo "--- dist contents ---"
+          ls -la dist/
           if [[ "${{ matrix.target }}" == "firefox" ]]; then
             mv src/manifest.json.bak src/manifest.json
             echo "Restored original manifest.json"
@@ -51,13 +53,14 @@ jobs:
         run: |
           mkdir -p artifacts
           if [[ "${{ matrix.target }}" == "firefox" ]]; then
-            # web-ext build wraps files in a `silence-skip-X.Y.Z/` subdirectory.
-            # Flatten it so manifest.json (and all source files) sit at the zip root,
-            # which is what Firefox requires for addon installation.
-            WEB_EXT_ZIP=$(ls dist/silence-skip-*.zip | head -1)
+            # web-ext build wraps files in a subdirectory. Flatten it so manifest.json
+            # (and all source files) sit at the zip root, which is what Firefox requires.
+            WEB_EXT_ZIP=$(find dist -maxdepth 1 -name '*.zip' -o -name '*.xpi' | head -1)
+            echo "Using web-ext built file: $WEB_EXT_ZIP"
             EXTRACT_DIR=$(mktemp -d)
             unzip -q "$WEB_EXT_ZIP" -d "$EXTRACT_DIR"
             INNER_DIR=$(ls "$EXTRACT_DIR")
+            echo "Inner dir: $INNER_DIR"
             cd "$EXTRACT_DIR/$INNER_DIR"
             zip -r "$OLDPWD/artifacts/silence-skip-${{ steps.ver.outputs.tag }}-firefox.xpi" .
           else
